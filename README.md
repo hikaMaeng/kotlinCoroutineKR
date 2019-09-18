@@ -436,4 +436,59 @@ launch(Swing) {
 
 ### 제한된 서스펜션
 
+<a href="https://github.com/Kotlin/KEEP/blob/master/proposals/coroutines.md#generators" target="_blank">generators</a> 예에서 ```sequence{}``` 및 ```yield()```를 구현하려면 다른 종류의 코루틴 빌더 및 서스펜션 함수가 필요하다. ```sequence{}``` 코루틴 빌더의 예제 코드는 다음과 같다.
+```kotlin
+fun <T> sequence(block: suspend SequenceScope<T>.() -> Unit): Sequence<T> = Sequence {
+    SequenceCoroutine<T>().apply {
+        nextStep = block.createCoroutine(receiver = this, completion = this)
+    }
+}
+```
+표준 라이브러리의 또 다른 기초 요소인 ```startCoroutine```과 유사한 <a href="http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines/create-coroutine.html" target="_blank">createCoroutine</a>을 사용하고 있다(이미 <a href="https://github.com/Kotlin/KEEP/blob/master/proposals/coroutine-builders" target="_blank">코루틴빌더 섹션</a>에서 설명했다) 코루틴을 생성하지만 시작하지는 않는다. 대신 ```Continuation<Unit>```에 대한 참조로 초기화된 컨티뉴에이션을 반환한다.
+
+```kotlin
+fun <T> (suspend () -> T).createCoroutine(completion: Continuation<T>): Continuation<Unit>
+fun <R, T> (suspend R.() -> T).createCoroutine(receiver: R, completion: Continuation<T>): Continuation<Unit>
+```
+
+또 다른 차이점은 이 빌더를 위한 suspending람다가 ```SequenceScope<T>리시버의 <a href="https://kotlinlang.org/docs/reference/lambdas.html#function-literals-with-receiver" target="_blank">확장람다</a>라는 점이다. ```SequenceScope```인터페이스는 제네레이터 블록의 스코프를 제공하며 다음과 같이 정의된다.
+
+```kotlin
+interface SequenceScope<in T> {
+    suspend fun yield(value: T)
+}
+```
+
+다중 객체의 생성을 피하기 위해 ```sequence{}``` 구현은 ```SequenceScope<T>``와 ```Continuation<Unit>```을 구상하는 ```SequenceCoroutine<T>``` 클래스를 정의하므로 ```createCoroutine```의 ```receiver```인자와 ```complete``` 컨티뉴에이션 인자 모두 사용할 수 있다. ```SequenceCoroutine<T>```의 간단한 구현은 다음과 같다.
+
+```kotlin
+private class SequenceCoroutine<T>: AbstractIterator<T>(), SequenceScope<T>, Continuation<Unit> {
+    lateinit var nextStep: Continuation<Unit>
+
+    // AbstractIterator 구상
+    override fun computeNext() { nextStep.resume(Unit) }
+
+    // Completion continuation 구상
+    override val context: CoroutineContext get() = EmptyCoroutineContext
+
+    override fun resumeWith(result: Result<Unit>) {
+        result.getOrThrow() // 에러처리
+        done()
+    }
+
+    // Generator 구상
+    override suspend fun yield(value: T) {
+        setNext(value)
+        return suspendCoroutine { cont -> nextStep = cont }
+    }
+}
+```
+
+
+
+
+
+
+
+
 
