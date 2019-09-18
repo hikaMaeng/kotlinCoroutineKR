@@ -369,7 +369,71 @@ suspending함수에서 사용할 수 있는  kotlin.coroutines 패키지의 최�
 
 ### 컨티뉴에이션 인터셉터
 
-비동기 UI 사용 사례를 생각해보자. 비동기 UI 애플리케이션은 다양한 suspend 함수가 임의의 스레드에서 코루틴 실행되더라도 코루틴 본문 자체가 항상 UI 스레드에서 실행되도록 해야한다. 이는 연속 인터셉터를 사용하여 수행됩니다. 우선, 우리는 코 루틴의 수명주기를 완전히 이해해야합니다. launch {} 코 루틴 빌더를 사용하는 코드 스 니펫을 고려하십시오.
+<a href="https://github.com/Kotlin/KEEP/blob/master/proposals/coroutines.md#asynchronous-ui" target="_blank">비동기 UI</a> 사용 사례를 생각해보자. 비동기 UI 애플리케이션은 다양한 suspend 함수가 임의의 스레드에서 코루틴 실행되더라도 코루틴 본문 자체가 항상 UI스레드에서 실행되도록 해야한다. 이는 continuation interceptor를 사용해 실현한다. 그 전에 먼저 코루틴의 수명주기를 완전히 이해해야 한다. ```launch{}``` 코루틴 빌더를 사용하는 코드 스니펫을 보자.
 
+```kotlin
+launch(Swing) {
+    initialCode() // 초기화코드 실행
+    f1.await() // suspension지점 #1
+    block1() // 실행 #1
+    f2.await() // suspension지점 #2
+    block2() // 실행 #2
+}
+```
+코루틴은 첫 번째 suspend지점까지 initialCode을 실행하며 시작된다. suspend 지점에서 일시 중지되고 해당 suspend에 정의된대로 일정 시간이 지나면 resumes를 통해 다시 시작되어 block1을 실행하고 다시 suspend지점에서 일시 중지되며, 이 후 다시 시작되어 block2을 실행 후 완료된다.
+
+컨티뉴에이션 인터셉터는 initialCode, block1, block2의 resume에서부터 후속 서스펜션 지점까지 각 실행에 해당하는 컨티뉴에이션을 가로채서 랩핑하는 옵션이 있다. 코루틴의 초기화 코드는 초기화된 컨티뉴에이션의 resume인 셈이다. 표준 라이브러리는 kotlin.coroutines 패키지에 <a href="http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines/-continuation-interceptor/index.html" target="_blank">ContinuationInterceptor</a> 인터페이스를 제공한다.
+
+```kotlin
+interface ContinuationInterceptor : CoroutineContext.Element {
+    companion object Key : CoroutineContext.Key<ContinuationInterceptor>
+    fun <T> interceptContinuation(continuation: Continuation<T>): Continuation<T>
+    fun releaseInterceptedContinuation(continuation: Continuation<*>)
+}
+```
+
+interceptContinuation 함수는 코루틴의 컨티뉴에이션을 감싼다. 코루틴이 suspend될 때마다 코루틴 프레임웍은 다음 코드를 사용해 후속되는 resume에 대한 실제 컨티뉴에이션을 감싼다.
+
+```kotlin
+val intercepted = continuation.context[ContinuationInterceptor]?.interceptContinuation(continuation) ?: continuation
+```
+
+코루틴 프레임웍은 실제 각 컨티뉴에이션 인스턴스의 컨티뉴에이션을 가로챈 결과를 캐쉬하고 더 이상 필요하지 않은 경우 releaseInterceptedContinuation (intercepted)을 호출한다. 자세한 내용은 구현 <a href="https://github.com/Kotlin/KEEP/blob/master/proposals/coroutines.md#implementation-details" target="_blank">세부 사항 섹션</a>을 참조하자.
+
+참고 - ```await``와 같은 suspend함수는 실제로는 코루틴의 suspend를 하지 않을 수도 있다. 예를 들어, ```await``` 구현은 <a href="https://github.com/Kotlin/KEEP/blob/master/proposals/coroutines.md#suspending-functions" target="_blank">suspend함수섹션</a>에서 보여준 것처럼 future가 이미 완료된 경우엔 실제로 코루틴을 suspend하지 않는다(이 경우, 즉시 ```resume```을 호출하고 실제 suspend없이 실행이 계속됨) 코루틴은 오직 ```suspendCoroutine```블록이 ```resume```호출 없이 반환될 때만 코루틴 실행되는 동안 실제 suspension이 발생되고 가로챈다.
+
+Swing UI 이벤트 디스패치 스레드에 실행을 디스패치하는 Swing 인터셉터의 구체적인 예제를 살펴보자. ```SwingUtilities.invokeLater```를 사용하여 Swing 이벤트 디스패치 스레드에 컨티뉴에이션을 디스패치하는 ```SwingContinuation``` 래퍼 클래스의 정의다.
+
+```kotlin
+private class SwingContinuation<T>(val cont: Continuation<T>) : Continuation<T> {
+    override val context: CoroutineContext = cont.context
+    
+    override fun resumeWith(result: Result<T>) {
+        SwingUtilities.invokeLater { cont.resumeWith(result) }
+    }
+}
+```
+
+이제 해당 컨텍스트 요소로 사용할 ```Swing```객체를 정의하고 ```ContinuationInterceptor``` 인터페이스를 구현한다.
+
+```kotlin
+object Swing : AbstractCoroutineContextElement(ContinuationInterceptor), ContinuationInterceptor {
+    override fun <T> interceptContinuation(continuation: Continuation<T>): Continuation<T> =
+        SwingContinuation(continuation)
+}
+```
+
+위 코드는 <a href="https://github.com/kotlin/kotlin-coroutines-examples/tree/master/examples/context/swing.kt" target="_blank">여기</a>에서 있다. 참고 : <a href="https://github.com/kotlin/kotlinx.coroutines" target="_blank">kotlinx.coroutines</a>에서 ```Swing``` 객체의 실제 구현은 현재 이 코루틴을 실행 중인 스레드의 이름으로 현재 실행 중인 코루틴의 식별자를 제공하고 표시하는 코루틴 디버깅 기능도 지원한다.
+
+이제 ```Swing``` 인자와 함께 ```launch{}``` 코루틴 빌더를 사용해 Swing 이벤트 디스패치 스레드에서 완전히 실행되는 코루틴을 실행할 수 있다.
+
+```kotlin
+launch(Swing) {
+  // code in here can suspend, but will always resume in Swing EDT
+}
+```
+<a href="https://github.com/kotlin/kotlinx.coroutines" target="_blank">kotlinx.coroutines</a>에서 Swing 컨텍스트의 실제 구현은 라이브러리의 시간 및 디버깅 기능과 통합되므로 더 복잡하다.
+
+### 제한된 서스펜션
 
 
