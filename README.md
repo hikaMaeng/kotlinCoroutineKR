@@ -314,3 +314,62 @@ fun <R, T> (suspend  R.() -> T).startCoroutine(receiver: R, completion: Continua
 startCoroutine은 코루틴을 만들고 현재 쓰레드에서 즉시 실행을 시작하여 첫번째 일시정지점까지 간 뒤 반환한다. 일시중지점은 코루틴의 몸체의 suspending함수를 발동시키고, 코루틴이 다시 실행될지는 해당 suspending함수에 달려있다.
 
 ### 코루틴 컨텍스트
+코루틴 컨텍스트는 코루틴을 추가할 수 있는 사용자 정의 객체들의 영속화된 세트다. 코루틴의 스레드 정책, 로깅, 보안, 코루틴실행의 트랜젝션측면, 코루틴식별자 및 이름 등을 담당하는 객체가 포함될 수 있다. 코루틴과 코루틴 컨텍스트에 대한 간단한 비유를 들어보자.
+코루틴을 가벼운 쓰레드라 생각해보자. 이 때 코루틴 컨텍스트는 쓰레드 지역변수의 컬렉션 같은 것이다. 쓰레드 지역변수가 가변적인데 비해 코루틴 컨텍스트는 불변적이라는 것만 다르다. 코루틴은 굉장히 가볍기 때문에 변경이 필요한 경우 새 코루틴을 쉽게 시작할 수 있으므로 불변성은 코루틴에 대한 큰 제약은 되지 않는다.
+
+표준 라이브러리에는 컨텍스트요소에 대한 구상객체가 포함되어 있지 않다. 하지만 인터페이스와 추상클래스를 통해 합성으로 라이브러리에 정의할 수 있고, 이를 통해 같은 컨텍스트의 요소들이 평화롭게 공존할 수 있다.
+
+개념 상, 코루틴 컨텍스트는 요소의 인덱싱 셋이며 각 요소는 고유키가 있다. 사실 셋과 맵이 혼합된 구조다. 요소는 맵처럼 키를 갖지만 키는 셋처럼 요소와 직접 연결된다. 표준 라이브러리는 kotlin.coroutines패키지 안의 <a href="http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines/-coroutine-context/index.html" target="_blank">CoroutineContext</a>에 최소한의 인터페이스로 정의되어있다.
+
+```kotlin
+interface CoroutineContext {
+    operator fun <E : Element> get(key: Key<E>): E?
+    fun <R> fold(initial: R, operation: (R, Element) -> R): R
+    operator fun plus(context: CoroutineContext): CoroutineContext
+    fun minusKey(key: Key<*>): CoroutineContext
+
+    interface Element : CoroutineContext {
+        val key: Key<*>
+    }
+
+    interface Key<E : Element>
+}
+```
+```CoroutineContext``` 자신은 네 가지 핵심 연산을 제공한다.
+* get연산자는 키를 인자로 받아 요소를 반환한다.
+* fold함수는 컨텍스트 내의 모든 요소를 반복할 수단을 제공한다.
+* plus연산자는 Set의 plus와 비슷하게 작동하며 왼쪽요소와 오른쪽 요소를 결합한 요소를 반환하며 이 때 키는 왼쪽요소의 키가 된다.
+* minus연산자는 그 키를 포함하지 않게 컨텍스트를 반환한다.
+
+코루틴 컨텍스트에 있는 ```Element```는 컨텍스트 자체다. 이 요소만 있는 싱글톤 컨텍스트인 셈이다.  이 개념이 합성 컨텍스트를 생성할 수 있게 하는데 코루틴 컨텍스트 요소의 라이브러리 정의를 가져와 그들을 +로 결합하면 된다. 예를 들어 하나의 라이브러리가 유저의 승인 정보를 갖는 ```auth```요소를 정의하고 다른 라이브러리에서는 몇몇 실행 컨텍스트 정보를 갖는 ```threadPool``` 객체를 정의했다면 ```launch{}```코루틴 빌더를 합성 컨텍스트인 ```launch(auth + threadPool){...}```로 사용할 수 있다.
+
+참고 : kotlinx.coroutines는 코루틴 실행을 백그라운드 스레드의 공유 풀로 디스패치하는 Dispatchers.Default 객체를 포함하여 여러 컨텍스트 요소를 제공한다.
+
+표준 라이브러리는 <a href="http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines/-empty-coroutine-context/index.html" target="_blank">EmptyCoroutineContext</a>를 제공하는데 이는 아무 요소도 포함하지 않는 ```CoroutineContext```의 인스턴스다.
+
+모든 서드파티 컨텍스트 요소는 표준 라이브러리의 kotlin.coroutines 패키지에서 제공하는 AbstractCoroutineContextElement 클래스를 확장해야 한다. 라이브러리에 정의된 컨텍스트 요소는 다음 스타일을 권장한다. 다음 예는 현재 사용자 이름을 저장하는 가상의 인증 컨텍스트 요소다.
+
+```kotlin
+class AuthUser(val name: String) : AbstractCoroutineContextElement(AuthUser) {
+    companion object Key : CoroutineContext.Key<AuthUser>
+}
+```
+
+이 예제는 <a href="https://github.com/kotlin/kotlin-coroutines-examples/tree/master/examples/context/auth.kt" target="_blank">여기</a>서 찾을 수 있다.
+
+요소 클래스의 companion object를 컨텍스트의 ```Key```로 정의하여 컨텍스트의 엘리먼트를 유연하게 다룰 수 있게 합니다. 다음은 현재 사용자의 이름을 확인해야하는 suspending 함수의 가상 구현이다.
+
+```kotlin
+suspend fun doSomething() {
+    val currentUser = coroutineContext[AuthUser]?.name ?: throw SecurityException("unauthorized")
+    // do something user-specific
+}
+```
+suspending함수에서 사용할 수 있는  kotlin.coroutines 패키지의 최상위 수준 <a href="http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines/coroutine-context.html" target="_blank">coroutineContext</a> 속성을 사용해 현재 코루틴의 컨텍스트를 검색한다.
+
+### 컨티뉴에이션 인터셉터
+
+비동기 UI 사용 사례를 생각해보자. 비동기 UI 애플리케이션은 다양한 suspend 함수가 임의의 스레드에서 코루틴 실행되더라도 코루틴 본문 자체가 항상 UI 스레드에서 실행되도록 해야한다. 이는 연속 인터셉터를 사용하여 수행됩니다. 우선, 우리는 코 루틴의 수명주기를 완전히 이해해야합니다. launch {} 코 루틴 빌더를 사용하는 코드 스 니펫을 고려하십시오.
+
+
+
