@@ -14,8 +14,7 @@
 * generator와 async/await의 사용법을 대등한 수준으로 대체함
 * 자바 NIO나 Futures의 다른 구현체 등, 이미 존재하고 있는 비동기 API를 코틀린 코루틴으로 감싸 활용할 수 있게 함
 
-**역주**
-컨셉은 오히려 ES2018에 포함된 <a href="https://github.com/tc39/proposal-async-iteration" rel="noopener noreferrer" target="_blank">Asynchronous Iterators</a> 과 비슷합니다만 다른 플랫폼이 await의 컨티뉴에이션 조건을 만족하는 특정 객체(ES에서는 프라미스)를 강요하는데 비해 코틀린 코루틴은 직접 컨티뉴에이션의 resume을 노출함으로서 어떠한 비동기API라도 연동할 수 있게 합니다.
+>**역주** : 컨셉은 오히려 ES2018에 포함된 <a href="https://github.com/tc39/proposal-async-iteration" rel="noopener noreferrer" target="_blank">Asynchronous Iterators</a> 과 비슷합니다만 다른 플랫폼이 await의 컨티뉴에이션 조건을 만족하는 특정 객체(ES에서는 프라미스)를 강요하는데 비해 코틀린 코루틴은 직접 컨티뉴에이션의 resume을 노출함으로서 어떠한 비동기API라도 연동할 수 있게 합니다.
 
 ### 목차
 생략합니다. =o=;
@@ -47,7 +46,7 @@ inChannel.read(buf) {
 }
 ```
 
-이 예에서 콜백 내부에 콜백이 있다는 걸 알아차릴 수 있다. 이 방식은 수많은 보일러플래이트로부터 우릴 구해준다(콜백에게 buf인자를 명식적으로 전달할 필요가 없다. 콜백은 클로저를 통해 buf를 사용한다) 하지만 매번 들여쓰기가 증가하여 중첩이 1회 이상 될 것을 쉽게 예상할 수 있다("callback hell"에 대해 검색해보라)
+이 예에서 콜백 내부에 콜백이 있다는 걸 알아차릴 수 있다. 이 방식은 수많은 보일러플래이트로부터 우릴 구해준다(콜백에게 buf인자를 명식적으로 전달할 필요가 없다. 콜백은 클로저를 통해 `buf`를 사용한다) 하지만 매번 들여쓰기가 증가하여 중첩이 1회 이상 될 것을 쉽게 예상할 수 있다("callback hell"에 대해 검색해보라)
 
 위와 동일한 연산을 코루틴에서는 동기코드처럼 표현할 수 있다(IO api를 코루틴 요구사항에 맞게 수정한 라이브러리가 공급된 경우를 가정함)
 
@@ -68,9 +67,11 @@ launch {
 }
 ```
 
-aRead()와 aWrite()는 특별한 suspending function으로 코드의 실행을 일시 중단할 수 있으며(실행 중인 쓰레드를 차단하는 것은 아님) 호출이 완료되면 다시 시작될 수 있다. aRead() 후의 모든 코드가 람다로 감싸져 aRead()의 콜백으로 전달되고 aWrite()도 마찬가지로 생각해보면 이 코드가 위와 동일하지만 더 읽기 쉽다는 걸 알 수 있다.
+`aRead()`와 `aWrite()`는 특별한 `suspending function`으로 코드의 실행을 일시 중단할 수 있으며(실행 중인 쓰레드를 차단하는 것은 아님) 호출이 완료되면 다시 시작될 수 있다. `aRead()` 후의 모든 코드가 람다로 감싸져 `aRead()`의 콜백으로 전달되고 `aWrite()`도 마찬가지로 생각해보면 이 코드가 위와 동일하지만 더 읽기 쉽다는 걸 알 수 있다.
 
-코루틴은 특정 구현체에 의존적이지 않은 generic한 방식으로 사용되는 것을 목표로 하고 있으며 이 예제에 등장한 launch{}, aRead(), aWrite()는 이는 매우 일반화된 방식으로 코루틴이 지향하는 목표로 
+코루틴은 특정 구현체에 의존적이지 않은 generic한 방식으로 사용되는 것을 목표로 하고 있으며 이 예제에 등장한 `launch{}, aRead(), aWrite()`는 단지 코루틴과 함께 작동하도록 라이브러리로 제공되는 함수일 뿐이다. `launch`는 코루틴 빌더로 코루틴을 만들어 실행하고 `aRead / aWrite`는 암묵적으로 컨티뉴에이션을 받아들이는 특별한 suspending 함수다(컨티뉴에이션은 단지 generic 콜백이다)
+
+>코드에 등장하는 `launch{}`코루틴 빌더 섹션에서, aRead()는 콜백 감싸기섹션에서 다룬다.
 
 명시적으로 전달된 콜백은 루프의 중간에서 비동기 호출이 까다롭지만, 코루틴에서는 다음과 같은 코드가 보통이다.
 
@@ -91,10 +92,12 @@ launch {
 }
 ```
 
-예외 처리도 코루틴쪽 좀 더 편할 것을 예상할 수 있다(역주:예외 처리도 동기화 문법에 맞게 되어있으므로)
+예외 처리도 코루틴쪽 좀 더 편할 것을 예상할 수 있다(**역주** : 예외 처리도 동기화 문법에 맞게 되어있으므로 ^^)
 
-### Futures
-또 다른 비동기 스타일인 Future로 이미지 오버레이를 적용해보자.
+### Futures(자바의 퓨쳐)
+
+또 다른 비동기 스타일로 `Future`가 있다. 퓨쳐는 또한 promise나 deferred로 알려져있다. 이를 이용해 이미지 오버레이를 적용하는 API작성에 사용해보자.
+
 ```kotlin
 val future = runAfterBoth(
     loadImageAsync("...original..."), // Future 생성
@@ -107,6 +110,7 @@ val future = runAfterBoth(
 ```
 
 코루틴으로 재작성해보면
+
 ```kotlin
 val future = future {
     val original = loadImageAsync("...original...") // Future 생성
@@ -118,10 +122,14 @@ val future = future {
 }
 ```
 
-위에서 c#이나 js처럼 특별한 키워드(async/await)가 없으며 들여쓰기도 깊어지지 않고 동기적으로 코드를 표현하고 있다.
+> 위 코드 상의 `future{}`는 퓨쳐생성 섹션에서, `await()`는 suspending function에서 다룬다.
 
-### Generators
-지연 시퀀스 등에 사용되는 c#, python, js등의 제네레이터도 코루틴으로 대체할 수 있다. 이런 지연 시퀀스는 순차적인 코드로 보이지만 런타임에 요청된 요소만 계산하게 된다.
+보다 자연스럽고 들여쓰기도 없는 합성로직(여기서는 보이지 않지만 예외처리를 포함한)이 표현되고, future를 지원하기 위해 c#이나 js처럼 특별한 키워드(async/await)가 없다. `future{}`나 `.await{}`는 단지 라이브러리에서 제공되는 함수일뿐이다.
+
+### Generators(제네레이터)
+
+지연 연산 시퀀스 등에 사용되는 제네레이터도 코루틴으로 대체할 수 있다(c#, python, js등에서는 `yield`키워드로 통제한다) 이런 지연 연산 시퀀스는 순차적인 코드로 보이지만 런타임에 요청된 요소만 계산하게 된다.
+
 ```kotlin
 // fibonacci의 타입은 Sequence<Int>
 val fibonacci = sequence {
@@ -142,12 +150,13 @@ val fibonacci = sequence {
 ```kotlin
 println(fibonacci.take(10).joinToString())
 ```
+> `1, 1, 2, 3, 5, 8, 13, 21, 34, 55`가 출력될 것이다. <https://github.com/Kotlin/coroutines-examples/blob/master/examples/sequence/fibonacci.kt" target="_blank">여기</a>서 코드를 내려받을 수 있다
 
-제네레이터는 동기 구문을 지원하므로 흐름제어와 예외처리를 모두 사용할 수 있다.
+제네레이터의 강력함은 임의의 제어흐름을 지원한다는 것이다. `while`을 비롯해 `if`, `try / catch / finally`등 모든 제어문을 포함할 수 있다.
 
 ```kotlin
 val seq = sequence {
-    yield(firstItem) // 일시 중지
+    yield(firstItem) // 일시 중지 위치
 
     for (item in input) {
         if (!item.isValid()) break // 더 이상 요소를 만들어내지 않음
@@ -157,7 +166,7 @@ val seq = sequence {
     }
     
     try {
-        yield(lastItem()) // 일시 중지
+        yield(lastItem()) // 일시 중지 위치
     }
     finally {
         // finalization 코드
@@ -165,13 +174,14 @@ val seq = sequence {
 } 
 ```
 
-이 방식에서 yieldAll(sequence)표현이 가능하기 때문에 지연 시퀀스끼리의 결합을 단순하고 효율적으로 구현할 수 있다(역주: es6의 yield* 처럼)
+>`sequnce{}`와 `yield()`는 제한된 suspension섹션에서 다룬다.
 
-**역주**
-sequence{} 를 이용해 만들어내는 제네레이터는 거의 js의 제네레이터와 동일하지만 js의 yield가 외부와 값을 주고 받을 수 있는데 비해 SequenceScope의 yield는 값을 외부로 주는 것 밖에 할 수 없다.
+이 구조에서는 `sequence{}`나 `yield()`처럼 yieldAll(sequence)도 라이브러리 함수로 만들어 사용할 수 있으므로 지연 연산 시퀀스끼리의 결합을 단순하고 효율적으로 구현할 수 있다(**역주** : es6의 yield* 처럼)
+
+>**역주** : sequence{} 를 이용해 만들어내는 제네레이터는 거의 js의 제네레이터와 동일하지만 js의 yield가 외부와 값을 주고 받을 수 있는데 비해 SequenceScope의 yield는 값을 외부로 주는 것 밖에 할 수 없습니다.
 
 ## 비동기 UI
-보통 UI작업이 발생하는 단일 이벤트 스레드가 있다. 그 외의 다른 스레드에서 UI 상태를 수정하는 것은 불가능하며, UI스레드에서 실행시킬 수 있는 라이브러리를 제공하는 경우가 대부분이다(예를 들어 Swing은 SwingUtilities.invokeLater, JavaFX는 Platform.runLater, Android는 Activity.runOnUiThread 등) 다음 Swing의 예를 보자.
+보통 UI를 포함하는 애플리케이션은 모든 UI작업을 처리하는 단일 이벤트 디스패치 스레드가 있다. 그 외의 다른 스레드에서 UI 상태를 수정하는 것은 보통 허용하지 않는다. 모든 UI라이브러리들은 어떤 실행구문을 UI쓰레드에서 작동하게 해주는 기본 요소를 제공합니다. 예를 들면 Swing의 `SwingUtilities.invokeLater`나 JavaFX의 `Platform.runLater`가 있고 Android는 `Activity.runOnUiThread` 등이 제공된다. Swing 애플리케이션에서 어떤 비동기 연산 후에 그 결과를 UI에 표시하는 예를 보자.
 
 ```kotlin
 makeAsyncRequest {
@@ -189,7 +199,7 @@ makeAsyncRequest {
 }
 ```
 
-사실 앞에서 다룬 콜백지옥과 유사하다. 코루틴의 우아한 해결을 보자.
+이 코드는 앞에서 다룬 콜백지옥과 유사하다. 이것 역시 코루틴으로 우아하게 해결할 수 있다.
 
 ```kotlin
 launch(Swing) {
@@ -204,26 +214,30 @@ launch(Swing) {
 }
 ```
 
+>`Swing`컨텍스를 위한 이 코드는 컨티뉴이에션 인터셉터 섹션에서 다룬다.
+
 모든 예외가 언어 본연의 구조로 처리된다.
 
-**역주**
-launch(컨텍스트) 에서 코드가 실행될 쓰레드를 고를 수 있는데 Swing을 선택했으므로 람다의 내용은 Swing컨텍스트에서 실행된다. 하지만 makeRequest() 함수 내부에서 본인만의 컨텍스트를 또 정의할 수 있기 때문에 해당 코드는 백그라운드 쓰레드에서 실행되게 할 수 있다.
+>**역주** : `launch(컨텍스트)` 에서 코드가 실행될 쓰레드를 고를 수 있는데 `Swing`을 선택했으므로 람다의 내용은 `Swing`컨텍스트에서 실행된다. 하지만 `makeRequest()` 함수 내부에서 본인만의 컨텍스트를 또 정의할 수 있기 때문에 해당 코드는 백그라운드 쓰레드에서 실행되게 할 수 있습니다.
 
 ### 더 많은 사용 분야
+
 코루틴은 다음을 포함하여 더 많은 곳에 사용될 수 있다.
+
 * 채널 기반의 동시성(고루틴과 채널같은..)
 * 액터 기반의 동시성
 * 사용자 인터렉션이 필요한 백그라운드 프로세스(모달 다이얼로그같은)
-* 통신 프로토콜:각 액터를 상태머신이 아닌 시퀀스로 구현
+* 통신 프로토콜 : 각 액터를 상태머신이 아닌 시퀀스로 구현
 * 웹 응용 프로그램 워크플로우 : 사용자 등록, 전자 메일 유효성 검사, 로그인 (일시 중지된 코루틴은 직렬화되어 DB에 저장될 수 있다..미친)
 
 ## 코루틴 개요
+
 이 절에서는 코루틴을 만들고 제어하는 표준 라이브러리와 이를 사용하는 언어 매커니즘의 개요를 설명한다.
 
 ### 용어
-* coroutine - suspendable computation의 인스턴스. 쓰레드와 유사한 개념으로 실행할 코드 블록을 갖고 비슷한 라이프사이클을 갖는다. 단, 생성되고 시작되지만 특정 스레드에 바인딩되지는 않는다. 한 스레드에서 실행을 일시 중단하고 다른 스레드에서 재개할 수 있다. 또한 Future나 Promise처럼 값이나 예외로 완료된다.
+* coroutine - suspendable computation(일시정지 가능한 연산)의 인스턴스. 쓰레드와 유사한 개념으로 실행할 코드 블록을 갖고 비슷한 라이프사이클을 갖는다. 단, 생성되고 시작되지만 특정 스레드에 바인딩되지는 않는다. 한 스레드에서 실행을 일시정지하고 다른 스레드에서 재개할 수 있다. 또한 Future나 Promise처럼 값이나 예외로 완료된다.
 
-* suspending 함수 - suspend modifier로 표시된 함수. 다른 suspending 함수를 호출해 현재 실행 스레드를 차단하지 않고 코드 실행을 일시 중단할 수 있다. suspending 함수는 일반 코드에서 호출할 수 없고 다른 suspend 함수나 suspending 람다에서만 호출할 수 있다. 예를 들어 .await() 및 yield()는 앞 서 예처럼 라이브러리에 정의된 함수를 일시 중지 한다. 표준 라이브러리는 다른 모든 suspending 함수를 정의할 때 사용되는 기본 suspending 함수를 제공한다.
+* suspending 함수 - `suspend` 키워드를 붙여 만든 함수. 다른 suspending 함수를 호출해 현재 실행 스레드를 차단하지 않고 코드 실행을 일시 중단할 수 있다. suspending 함수는 일반 코드에서 호출할 수 없고 다른 suspend 함수나 suspending 람다(아래서 설명)에서만 호출할 수 있다. 예를 들어 `.await()` 및 `yield()`는 앞 서 예처럼 라이브러리에 정의된 suspending 함수다. 표준 라이브러리는 다른 suspending 함수를 정의할 때 사용되는 기본 suspending 함수를 제공한다.
 
 * suspending 람다 - 코루틴에서 실행할 코드블록. 일반 람다와 같은 모양이지만 함수타입은 suspend modifier가 된다. 보통 람다처럼, suspending 람다는 suspending 함수의 간단한 익명 구문이다. suspending 함수를 호출해 현재 실행 스레드를 차단하지 않고 코드 실행을 일시 중지 할 수 있다. 예를 들어 launch, futers, sequence 함수 다음에 중괄호로 묶인 코드 블록은 모두 suspending 람다다.
 
