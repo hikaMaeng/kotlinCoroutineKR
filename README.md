@@ -720,75 +720,49 @@ Compare this to other [asynchronous programming styles](#asynchronous-programmin
 where each subsequent step of asynchronous processing is typically implemented with a separate, freshly allocated,
 closure object.
 
-### Coroutine intrinsics
+### 코루틴 내장함수
 
-Kotlin standard library provides `kotlin.coroutines.intrinsics` package that contains a number of
-declarations that expose internal implementation details of coroutines machinery that are explained
-in this section and should be used with care. These declarations should not be used in general code, so 
-the `kotlin.coroutines.intrinsics` package is hidden from auto-completion in IDE. In order to use
-those declarations you have to manually add the corresponding import statement to your source file:
+코틀린 표준라이브러리는 `kotlin.coroutines.intrinsics` 패키지를 제공합니다.
+이 패키지에는 코루틴 시스템 내부의 상세 구현을 외부에 노출하는 몇 가지 정의를 내포하고 있습니다.
+이번 섹션에서는 이를 설명하며 주의 깊게 사용해야 합니다.
+
+패키지가 제공하는 이 정의들은 일반적인 코드에는 사용하면 안됩니다. 따라서 IDE의 자동완성에는 `kotlin.coroutines.intrinsics` 패키지가 숨겨져 있습니다. 이 정의들을 사용하려면 import문을 직접 추가해야 합니다.
 
 ```kotlin
 import kotlin.coroutines.intrinsics.*
 ```
 
-The actual implementation of `suspendCoroutine` suspending function in the standard library is written in Kotlin
-itself and its source code is available as part of the standard library sources package. In order to provide for the
-safe and problem-free use of coroutines, it wraps the actual continuation of the state machine 
-into an additional object on each suspension of coroutine. This is perfectly fine for truly asynchronous use cases
-like [asynchronous computations](#asynchronous-computations) and [futures](#futures), since the runtime costs of the 
-corresponding asynchronous primitives far outweigh the cost of an additional allocated object. However, for
-the [generators](#generators) use case this additional cost is prohibitive, so the intrinsics packages provides
-primitives for performance-sensitive low-level code.
+표준 라이브러리 상의 `suspendCoroutine` 유보함수의 실제 구현은 코틀린으로 작성되었으며 소스코드는 표준 라이브러리 소스패키지의 일부로 제공됩니다. 코루틴의 안전한 사용을 위해 상태머신의 실제 컨티뉴에이션은 각 코루틴의 유보지점마다 추가 객체로 감싸집니다. 이는 비동기 계산 및 future같은 진짜 비동기 사용시 완벽하게 어울립니다. 왜냐면 추가 할당된 객체의 비용보다 해당되는 비동기용 객체의 비용이 런타임에 훨씬 크기 때문입니다. 하지만 제네레이터의 경우는 추가 비용이 엄청 크기 때문에 intrinsics 패키지는 저수준의 성능에 민감한 기본요소를 제공합니다.
 
-The `kotlin.coroutines.intrinsics` package in the standard library contains the function named 
-[`suspendCoroutineUninterceptedOrReturn`](http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines.intrinsics/suspend-coroutine-unintercepted-or-return.html)
-with the following signature:
+표준 라이브러리의 `kotlin.coroutines.intrinsics`패키지는 <a target="_blank" href="http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines.intrinsics/suspend-coroutine-unintercepted-or-return.html">`suspendCoroutineUninterceptedOrReturn`</a> 를 제공하는데 시그니처는 아래와 같습니다.
 
 ```kotlin
 suspend fun <T> suspendCoroutineUninterceptedOrReturn(block: (Continuation<T>) -> Any?): T
 ```
 
-It provides direct access to [continuation passing style](#continuation-passing-style) of suspending functions
-and exposes _unintercepted_ reference to continuation. The later means that invocation of `Continuation.resumeWith` does
-not go though [ContinuationInterceptor](#continuation-interceptor). It can be used when 
-writing synchronous coroutines with [restricted suspension](#restricted-suspension) that cannot have installed
-continuation interceptor (since their context is always empty) or 
-when currently executing thread is already known to be in the desired context.
-Otherwise, an intercepted continuation shall be acquired with the 
-[`intercepted`](http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines.intrinsics/intercepted.html)
-extension function (from `kotlin.coroutines.intrinsics` package):
+이 함수는 유보함수의 CPS에 직접적인 제어를 제공하고 컨티뉴에이션의 _unintercepted_ 를 노출한다. 이는 `Continuation.resumeWith`를 호출 시 ContinuationInterceptor를 경유하지 않게 할 수 있다는 뜻이다. 이는 제한된 유보(restricted suspension)로 동작하는 동기적 코루틴을 작성할 때 사용될 수 있다. 제한된 유보로 지정된 코루틴은 빈 컨텍스트를 사용하므로 컨티뉴에이션 인터셉터가 정의될 수 없다. 뿐만 아니라 현재 실행중인 쓰레드가 이미 원하는 컨텍스트에 있다고 알려진 경우에도 사용될 수 있습니다.
+그렇지 않으면 `kotlin.coroutines.intrinsics`패키지에서 확장된 함수로 인터셉트된 컨티뉴에이션을 얻어야 합니다.
 
 ```kotlin
 fun <T> Continuation<T>.intercepted(): Continuation<T>
 ```
 
-and the `Continuation.resumeWith` shall be invoked on the resulting _intercepted_ continuation.
+`Continuation.resumeWith` 는 인터셉트된 컨티뉴에이션을 호출하게 될 것입니다.
 
-Now, The `block` passed to `suspendCoroutineUninterceptedOrReturn` function can return 
-[`COROUTINE_SUSPENDED`](http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines.intrinsics/-c-o-r-o-u-t-i-n-e_-s-u-s-p-e-n-d-e-d.html) 
-marker if the coroutine did suspend (in which case `Continuation.resumeWith` shall be invoked exactly once later) or
-return the result value `T` or throw an exception (in both last cases `Continuation.resumeWith` shall never be invoked).
+이제 `suspendCoroutineUninterceptedOrReturn`함수에 전달된 `block`은 코루틴이 유보될 때(이 경우 `Continuation.resumeWith`는 한 번만 호출됨) <a target="_blank" href="http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines.intrinsics/-c-o-r-o-u-t-i-n-e_-s-u-s-p-e-n-d-e-d.html">`COROUTINE_SUSPENDED`</a>를 반환할 수 있으며 `T`를 반환하거나 예외를 던질 수 있습니다.
 
-A failure to follow this convention when using `suspendCoroutineUninterceptedOrReturn` results 
-in hard to track bugs that defy attempts to find and reproduce them via tests.
-This convention is usually easy to follow for `buildSequence`/`yield`-like coroutines,
-but attempts to write asynchronous `await`-like suspending functions on top of `suspendCoroutineUninterceptedOrReturn` are
-**discouraged** as they are **extremely tricky** to implement correctly without the help of `suspendCoroutine`.
+이 규칙을 따르지 않으면 `suspendCoroutineUninterceptedOrReturn`를 사용시 버그를 찾거나 테스트를 재현하기가 매우 어렵습니다. 이 규칙은 보통 `buildSequence`/`yield`같은 코루틴보다는 따르지 쉽습니다만, `suspendCoroutineUninterceptedOrReturn`를 이용해 `await`같은 비동기 유보함수를 작성할 시에는 `suspendCoroutine`의 도움없이 바르게 구현하기게 극단적으로 어렵기 때문에 권장하지 않습니다.
 
-There are also functions called 
-[`createCoroutineUnintercepted`](http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines.intrinsics/create-coroutine-unintercepted.html) 
-(from `kotlin.coroutines.intrinsics` package)
-with the following signatures:
+`kotlin.coroutines.intrinsics`패키지에는 <a target="_blank" href="http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines.intrinsics/create-coroutine-unintercepted.html">`createCoroutineUnintercepted`</a> 라는 함수도 있는 시그니처는 다음과 같습니다.
 
 ```kotlin
 fun <T> (suspend () -> T).createCoroutineUnintercepted(completion: Continuation<T>): Continuation<Unit>
 fun <R, T> (suspend R.() -> T).createCoroutineUnintercepted(receiver: R, completion: Continuation<T>): Continuation<Unit>
 ```
 
-They work similarly to `createCoroutine` but return unintercepted reference to the initial continuation.
-Similarly to `suspendCoroutineUninterceptedOrReturn` it can be in synchronous coroutines for better performance.   
-For example, optimization version of `sequence{}` builder via `createCoroutineUnintercepted` is shown below:
+`createCoroutine`와 유사하게 작동하지만 초기화 컨티뉴에이션이 인터셉터 없이 반환됩니다.
+`suspendCoroutineUninterceptedOrReturn`비슷하게 동기적 코루틴은 더 좋은 성능을 낼 수 있습니다.
+예를들어 `sequence{}`빌더의 최적화버전은 `createCoroutineUnintercepted`를 아래와 같이 사용합니다.
 
 ```kotlin
 fun <T> sequence(block: suspend SequenceScope<T>.() -> Unit): Sequence<T> = Sequence {
@@ -798,11 +772,11 @@ fun <T> sequence(block: suspend SequenceScope<T>.() -> Unit): Sequence<T> = Sequ
 }
 ```
 
-Optimized version of `yield` via `suspendCoroutineUninterceptedOrReturn` is shown below.
-Note, that because `yield` always suspends, the corresponding block always returns `COROUTINE_SUSPENDED`.
+`yield`도 `suspendCoroutineUninterceptedOrReturn`를 이용해 아래와 같이 최적화합니다.
+단 `yield`는 항상 유보하므로 대응하는 블록은 항상 `COROUTINE_SUSPENDED`를 반환합니다.
 
 ```kotlin
-// Generator implementation
+// 제네레이터 구현
 override suspend fun yield(value: T) {
     setNext(value)
     return suspendCoroutineUninterceptedOrReturn { cont ->
@@ -812,30 +786,25 @@ override suspend fun yield(value: T) {
 }
 ```
 
-> You can get full code [here](https://github.com/kotlin/kotlin-coroutines-examples/tree/master/examples/sequence/optimized/sequenceOptimized.kt)
+> <a target="_blank" href="https://github.com/kotlin/kotlin-coroutines-examples/tree/master/examples/sequence/optimized/sequenceOptimized.kt">여기</a>서 전체 코드를 얻을 수 있습니다.
 
-Two additional intrinsics provide lower-level version of `startCoroutine` (see [coroutine builders](#coroutine-builders) section)
-and are called
-[`startCoroutineUninterceptedOrReturn`](http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines.intrinsics/start-coroutine-unintercepted-or-return.html):
+저수준의 `startCoroutine`에 대한 두 가지 구현체도 <a target="_blank" href="http://kotlinlang.org/api/latest/jvm/stdlib/kotlin.coroutines.intrinsics/start-coroutine-unintercepted-or-return.html">`startCoroutineUninterceptedOrReturn`</a>라는 이름으로 제공됩니다.
 
 ```kotlin
 fun <T> (suspend () -> T).startCoroutineUninterceptedOrReturn(completion: Continuation<T>): Any?
 fun <R, T> (suspend R.() -> T).startCoroutineUninterceptedOrReturn(receiver: R, completion: Continuation<T>): Any?
 ```
 
-They are different from `startCoroutine` in two aspects. First of all, [ContinuationInterceptor](#continuation-interceptor)
-is not automatically used when starting coroutine, so the caller has to ensure the proper execution context if needed.
-Second, is that if the coroutine does not suspend, but returns a value or throws an exception, then the
-invocation of `startCoroutineUninterceptedOrReturn` returns this value or throws this exception. If the coroutine
-suspends, then it returns `COROUTINE_SUSPENDED`. 
+`startCoroutine`와 두 가지 차이점이 있는데 우선 `ContinuationInterceptor`가 코루틴을 시작할 때 자동으로 시작하지 않아 호출자는 필요시 적절한 컨텍스트의 실행을 보장해야 합니다.
+두 번째로 코루틴이 유보하지 않지만 값을 반환하거나 예외를 던진다면 `startCoroutineUninterceptedOrReturn`의 호출이 이를 처리한다는 것입니다. 코루틴이 유보된다면 `COROUTINE_SUSPENDED`이 반환됩니다.
 
-The primary use-case for `startCoroutineUninterceptedOrReturn` is to combine it with `suspendCoroutineUninterceptedOrReturn`
-to continue running suspended coroutine in the same context but with a different block of code:
+`startCoroutineUninterceptedOrReturn`의 가장 큰 용도는 `suspendCoroutineUninterceptedOrReturn`와 결합하여 같은 컨텍스트지만 다름 블록의 코드를 유보된 코루틴을 계속 실행하는 것입니다.
+
 
 ```kotlin 
 suspend fun doSomething() = suspendCoroutineUninterceptedOrReturn { cont ->
-    // figure out or create a block of code that needs to be run
-    startCoroutineUninterceptedOrReturn(completion = block) // return result to suspendCoroutineUninterceptedOrReturn 
+    // 실행이 필요한 코드의 블록을 계산하거나 생성
+    startCoroutineUninterceptedOrReturn(completion = block) // suspendCoroutineUninterceptedOrReturn 의 결과를 
 }
 ```
 
