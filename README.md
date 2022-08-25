@@ -640,20 +640,13 @@ class <anonymous_for_state_machine> extends SuspendLambda<...> {
 }    
 ```  
 
-Note that there is a `goto` operator and labels because the example depicts what happens in the 
-byte code, not in the source code.
+예제가 소스코드가 아닌, 바이트코드에서 어떤일이 일어나는지 묘사하기 위해 `goto` 연산자와 labels 가 존재하는점에 유의하시오.
 
-Now, when the coroutine is started, we call its `resumeWith()` — `label` is `0`, 
-and we jump to `L0`, then we do some work, set the `label` to the next state — `1`, call `.await()`
-and return if the execution of the coroutine was suspended. 
-When we want to continue the execution, we call `resumeWith()` again, and now it proceeds right to 
-`L1`, does some work, sets the state to `2`, calls `.await()` and again returns in case of suspension.
-Next time it continues from `L3` setting the state to `-1` which means 
-"over, no more work to do". 
+이제 코루틴이 시작됬을때 우리는 `resumeWith()` - `label` 은 `0` 를 호출합니다. 그리고 `L0` 으로 이동하여, 우리는 작업을 수행하고, `label` 의 값을 다음 상태인 `1` 로 설정한뒤, `.await()` 을 호출한 다음 그리고 만약 코루틴의 실행이 유보되었다면 return 합니다.
+코루틴을 계속 실행하려면 `resumeWith()` 를 재호출하고 이제 `L1` 에서 바로 진행되어 작업을 수행하고, `label` 을 2로 바꾸고, `resumeWith()` 를 재호출하고, 유보된 경우 바로 return 합니다. 다음 차례에선 `L3` 에서 계속 진행되고 "끝, 더이상 할 일이 없어" 라는 뜻의 label 울 `-1` 으로 변경합니다. 
 
-A suspension point inside a loop generates only one state, 
-because loops also work through (conditional) `goto`:
- 
+루프는 `goto:` 를 통해서도 작동하기 때문에 루프 내부의 유보지점은 하나의 상태만 생성한다
+
 ```kotlin
 var x = 0
 while (x < 10) {
